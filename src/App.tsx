@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { PostCard } from "./components/PostCard";
+import { LogViewer } from "./components/LogViewer";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Search, RefreshCw, AlertCircle, Filter, Calendar, SortDesc, SortAsc } from "lucide-react";
@@ -17,6 +18,7 @@ interface Post {
 }
 
 export default function App() {
+  const [showLogs, setShowLogs] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
   const [filteredPosts, setFilteredPosts] = useState<Post[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,108 +27,52 @@ export default function App() {
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [selectedPeriod, setSelectedPeriod] = useState<string>("all");
 
-  const SHEET_URL = "https://docs.google.com/spreadsheets/d/1CO0PSZ6guTq9eR03u_UkzPIHZr5k_SO5bedqZzPU0d8/edit?gid=0#gid=0";
-
-  // Function to parse Google Sheets URL and extract sheet ID
-  const extractSheetId = (url: string) => {
-    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    return match ? match[1] : null;
-  };
-
-  // Simple CSV parser that handles quoted fields
-  const parseCSVRow = (row: string): string[] => {
-    const fields: string[] = [];
-    let currentField = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < row.length; i++) {
-      const char = row[i];
-      const nextChar = row[i + 1];
-
-      if (char === '"') {
-        if (inQuotes && nextChar === '"') {
-          currentField += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        fields.push(currentField);
-        currentField = "";
-      } else {
-        currentField += char;
-      }
-    }
-    fields.push(currentField);
-
-    return fields.map(field => field.trim());
-  };
-
-  // Function to fetch data from Google Sheets
+  // Function to fetch data from Google Sheets API
   const fetchDataFromSheet = async () => {
     setLoading(true);
     setError("");
     
     try {
-      const sheetId = extractSheetId(SHEET_URL);
-      if (!sheetId) {
-        throw new Error("URL Google Sheet không hợp lệ");
-      }
+      const sheetId = "1CO0PSZ6guTq9eR03u_UkzPIHZr5k_SO5bedqZzPU0d8";
+      const apiKey = "AIzaSyBmtMhwV1mzWAsFoFAvSDxaTl4Bf1ENLbE";
+      const range = "Trang tính1!A1:D1000";
+      const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`);
 
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
-      
-      const response = await fetch(csvUrl);
       if (!response.ok) {
-        throw new Error("Không thể tải dữ liệu. Vui lòng đảm bảo sheet được chia sẻ công khai.");
+        throw new Error("Không thể tải dữ liệu. Vui lòng kiểm tra lại.");
       }
 
-      const csvText = await response.text();
-      const rows = csvText.split('\n');
-      
-      // Skip header row
-      const parsedPosts: Post[] = [];
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row.trim()) continue;
-        
-        const fields = parseCSVRow(row);
-        if (fields.length >= 4) {
-          // Parse time field - handle various formats
-          let timeValue = fields[2] || "";
-          
-          // If time is in format like "02/11/2024 14:40:02", convert to ISO
-          if (timeValue && !timeValue.includes('T')) {
-            try {
-              // Try parsing dd/mm/yyyy format
-              const parts = timeValue.split(' ');
-              if (parts[0]) {
-                const dateParts = parts[0].split('/');
-                if (dateParts.length === 3) {
-                  const day = dateParts[0];
-                  const month = dateParts[1];
-                  const year = dateParts[2];
-                  const timePart = parts[1] || '00:00:00';
-                  timeValue = `${year}-${month}-${day}T${timePart}Z`;
-                }
-              }
-            } catch (e) {
-              // Keep original value if parsing fails
-            }
-          }
-          
-          parsedPosts.push({
-            text: fields[0] || "",
-            url: fields[1] || "",
-            time: timeValue,
-            user: fields[3] || "",
-          });
-        }
+      const data = await response.json();
+      const rows = data.values;
+
+      if (!rows || rows.length === 0) {
+        setPosts([]);
+        setFilteredPosts([]);
+        return;
       }
+
+      // Lấy header từ dòng đầu tiên
+      const headers = rows[0].map((header: string) => header.toLowerCase().trim());
+      
+      // Tìm vị trí các cột
+      const textIdx = headers.findIndex((h: string) => h.includes('text'));
+      const urlIdx = headers.findIndex((h: string) => h.includes('url'));
+      const timeIdx = headers.findIndex((h: string) => h.includes('time'));
+      const userIdx = headers.findIndex((h: string) => h.includes('user'));
+
+      // Chuyển đổi dữ liệu thành mảng posts
+      const parsedPosts = rows.slice(1).map((row: string[]) => ({
+        text: row[textIdx] || '',
+        url: row[urlIdx] || '',
+        time: row[timeIdx] || '',
+        user: row[userIdx] || ''
+      }));
 
       setPosts(parsedPosts);
       setFilteredPosts(parsedPosts);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Đã xảy ra lỗi");
+      console.error('Error fetching data:', err);
+      setError(err instanceof Error ? err.message : "Đã xảy ra lỗi khi tải dữ liệu");
     } finally {
       setLoading(false);
     }
@@ -207,6 +153,7 @@ export default function App() {
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Làm mới
             </Button>
+          
           </div>
 
           {/* Search and Filters */}
@@ -280,7 +227,7 @@ export default function App() {
         <div className="space-y-4">
           {loading ? (
             <>
-              {[1, 2, 3, 4].map((i) => (
+              {[0, 1, 2, 3,].map((i) => (
                 <div key={i} className="bg-white rounded-lg p-6 space-y-3 shadow-sm">
                   <Skeleton className="h-4 w-32" />
                   <Skeleton className="h-24 w-full" />
@@ -325,6 +272,7 @@ export default function App() {
           </div>
         )}
       </main>
+      <LogViewer visible={showLogs} />
     </div>
   );
 }
