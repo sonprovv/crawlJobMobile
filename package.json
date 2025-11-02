@@ -104,5 +104,3 @@
             "vercel-build": "vite build --debug"
       }
 }
-
-}
