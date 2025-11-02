@@ -98,10 +98,10 @@
             "vite": "6.3.5"
       },
       "scripts": {
-                                    "dev": "vite",
-                                    "build": "vite build",
-                                    "build:debug": "vite build --debug",
-                                    "vercel-build": "vite build --debug"
+            "dev": "vite",
+            "build": "vite build",
+            "build:debug": "vite build --debug",
+            "vercel-build": "vite build --debug"
       }
 }
 
